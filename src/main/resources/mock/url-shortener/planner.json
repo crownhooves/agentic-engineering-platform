@@ -1,0 +1,77 @@
+{
+  "rationale": "The architecture task fixes exact interface contracts first, which lets core link handling, click analytics and risk assessment proceed in parallel. Tests are written per concern, the reviewer compiles and runs everything once, and the summary comes last.",
+  "tasks": [
+    {
+      "key": "design-architecture",
+      "title": "Design architecture and API contract",
+      "description": "Define components, the single base package, the data model, ID and short-code generation, the caching approach, the asynchronous analytics approach, and the OpenAPI 3.0.3 contract. Publish exact interface contracts (including the ClickRecorder interface used on redirect) so the core, analytics and test tasks can proceed in parallel.",
+      "agent": "ARCHITECT",
+      "dependsOn": [],
+      "risk": "MEDIUM",
+      "estimateHours": 3
+    },
+    {
+      "key": "implement-core",
+      "title": "Implement link creation, persistence and redirect",
+      "description": "Base62 encoder, ShortUrl entity, JDBC repository over H2, ShortenerService with URL validation and alias handling, an in-memory cache-aside layer, and the HTTP handlers for creating a link and redirecting. The redirect handler calls the ClickRecorder interface from the architecture.",
+      "agent": "CODER",
+      "dependsOn": ["design-architecture"],
+      "risk": "MEDIUM",
+      "estimateHours": 6
+    },
+    {
+      "key": "implement-analytics",
+      "title": "Implement click analytics",
+      "description": "The ClickRecorder implementation with an asynchronous bounded queue and batched writes, click storage, per-link and per-day aggregation queries, and the stats HTTP handler. Recording must never block or fail a redirect; when the queue is full events are dropped and counted.",
+      "agent": "CODER",
+      "dependsOn": ["design-architecture"],
+      "risk": "MEDIUM",
+      "estimateHours": 5
+    },
+    {
+      "key": "write-unit-tests",
+      "title": "Write unit tests",
+      "description": "Unit tests for the Base62 encoder, URL validation, alias rules, the cache layer and the click queue behaviour, using hand-written fakes.",
+      "agent": "TEST_WRITER",
+      "dependsOn": ["implement-core", "implement-analytics"],
+      "risk": "LOW",
+      "estimateHours": 3
+    },
+    {
+      "key": "write-integration-tests",
+      "title": "Write integration tests",
+      "description": "End-to-end tests over in-memory H2 with the HTTP server on an ephemeral port: create then redirect, unknown code, invalid URL, alias conflict, clicks reflected in the stats endpoint.",
+      "agent": "TEST_WRITER",
+      "dependsOn": ["implement-core", "implement-analytics"],
+      "risk": "MEDIUM",
+      "estimateHours": 3
+    },
+    {
+      "key": "validate-build",
+      "title": "Compile the project and run all tests",
+      "description": "Compile the generated sources and tests, run the test suite, and produce a validation report with compiler diagnostics and test results.",
+      "agent": "REVIEWER",
+      "dependsOn": ["write-unit-tests", "write-integration-tests"],
+      "risk": "HIGH",
+      "estimateHours": 1
+    },
+    {
+      "key": "assess-risks",
+      "title": "Assess risks, trade-offs and failure scenarios",
+      "description": "Risk register, failure scenarios with detection signals, the availability and SLO position, and the validation strategy.",
+      "agent": "RISK",
+      "dependsOn": ["design-architecture"],
+      "risk": "LOW",
+      "estimateHours": 2
+    },
+    {
+      "key": "summarize",
+      "title": "Produce the engineering summary",
+      "description": "Summarise the plan, rationale, generated artifacts, risks, trade-offs, validation result, assumptions and limitations.",
+      "agent": "SUMMARIZER",
+      "dependsOn": ["validate-build", "assess-risks"],
+      "risk": "LOW",
+      "estimateHours": 1
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+services:
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agentic-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: agentic-ollama-init
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Ollama API..."
+
+        until ollama list >/dev/null 2>&1; do
+          echo "Waiting for Ollama..."
+          sleep 2
+        done
+
+        echo "Ollama is ready."
+        echo "Checking qwen2.5-coder:7b..."
+
+        if ollama list | grep -q "qwen2.5-coder:7b"; then
+          echo "qwen2.5-coder:7b already exists."
+        else
+          echo "Pulling qwen2.5-coder:7b..."
+          ollama pull qwen2.5-coder:7b
+        fi
+
+        echo "Ollama initialization complete."
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentic-backend
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_PROFILES_ACTIVE: ollama
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: agentic-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: agentic-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - agentic-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  agentic-grafana-data:

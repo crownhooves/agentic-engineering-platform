@@ -1,0 +1,21 @@
+spring:
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: qwen2.5-coder:7b
+          temperature: 0.2
+          num-ctx: 16384
+agentic:
+  llm:
+    call-timeout: 300s
+  orchestrator:
+    step-timeout: 600s
+  workspace:
+    root: ./workspaces
+    reference-root: ./reference/sample
+    brownfield-root: ./reference/sample
+    command-timeout: 180s
+    max-output-chars: 50000
+    max-files: 2000

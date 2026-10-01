@@ -1,0 +1,185 @@
+=== FILE: src/test/java/com/example/generated/urlshortener/Base62Test.java ===
+package com.example.generated.urlshortener;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.Test;
+
+class Base62Test {
+
+    @Test
+    void zeroIsSevenCharacters() {
+        assertEquals("0000000", Base62.encode(0));
+    }
+
+    @Test
+    void encodingIsStable() {
+        assertEquals(Base62.encode(12345), Base62.encode(12345));
+    }
+
+    @Test
+    void negativeValuesAreRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> Base62.encode(-1));
+    }
+}
+=== END FILE ===
+
+=== FILE: src/test/java/com/example/generated/urlshortener/ShortenerServiceTest.java ===
+package com.example.generated.urlshortener;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+class ShortenerServiceTest {
+
+    @Test
+    void createsAndCachesLink() {
+        FakeRepository repository = new FakeRepository();
+        RecordingClickRecorder recorder = new RecordingClickRecorder();
+
+        ShortenerService service =
+                new ShortenerService(repository, recorder);
+
+        ShortUrl created =
+                service.create("https://example.com/page", "demo");
+
+        assertEquals("https://example.com/page",
+                created.originalUrl());
+
+        assertEquals(Optional.of(created),
+                service.resolveWithoutRecording(created.code()));
+
+        assertEquals(Optional.of(created),
+                service.resolveWithoutRecording("demo"));
+    }
+
+    @Test
+    void rejectsNonHttpUrl() {
+        ShortenerService service =
+                new ShortenerService(
+                        new FakeRepository(),
+                        new RecordingClickRecorder());
+
+        assertThrows(
+                ShortenerService.InvalidUrlException.class,
+                () -> service.create("file:///etc/passwd", null));
+    }
+
+    @Test
+    void rejectsInvalidAlias() {
+        ShortenerService service =
+                new ShortenerService(
+                        new FakeRepository(),
+                        new RecordingClickRecorder());
+
+        assertThrows(
+                ShortenerService.InvalidAliasException.class,
+                () -> service.create(
+                        "https://example.com",
+                        "bad alias"));
+    }
+
+    @Test
+    void rejectsDuplicateAlias() {
+        FakeRepository repository = new FakeRepository();
+
+        ShortenerService service =
+                new ShortenerService(
+                        repository,
+                        new RecordingClickRecorder());
+
+        service.create("https://example.com/a", "same");
+
+        assertThrows(
+                ShortenerService.AliasConflictException.class,
+                () -> service.create(
+                        "https://example.com/b", "same"));
+    }
+
+    @Test
+    void redirectRecordsClickButMissingAnalyticsDoesNotFailResolve() {
+        RecordingClickRecorder recorder =
+                new RecordingClickRecorder();
+
+        ShortenerService service =
+                new ShortenerService(
+                        new FakeRepository(),
+                        recorder);
+
+        ShortUrl created =
+                service.create(
+                        "https://example.com",
+                        null);
+
+        Optional<ShortUrl> result =
+                service.resolve(created.code());
+
+        assertTrue(result.isPresent());
+        assertEquals(1, recorder.events.size());
+    }
+
+    private static final class FakeRepository
+            implements ShortUrlRepository {
+
+        private final List<ShortUrl> links =
+                new ArrayList<>();
+
+        private long nextId = 1;
+
+        @Override
+        public ShortUrl create(
+                String url,
+                String alias) {
+
+            ShortUrl link = new ShortUrl(
+                    nextId,
+                    Base62.encode(nextId),
+                    url,
+                    alias,
+                    Instant.now());
+
+            nextId++;
+            links.add(link);
+            return link;
+        }
+
+        @Override
+        public Optional<ShortUrl> findByCode(
+                String code) {
+
+            return links.stream()
+                    .filter(link ->
+                            link.code().equals(code))
+                    .findFirst();
+        }
+
+        @Override
+        public boolean existsByAlias(
+                String alias) {
+
+            return links.stream()
+                    .anyMatch(link ->
+                            alias.equals(link.alias()));
+        }
+    }
+
+    private static final class RecordingClickRecorder
+            implements ClickRecorder {
+
+        private final List<ClickEvent> events =
+                new ArrayList<>();
+
+        @Override
+        public void record(ClickEvent event) {
+            events.add(event);
+        }
+    }
+}
+=== END FILE ===

@@ -1,0 +1,56 @@
+{
+  "normalizedRequirement": "Build a URL shortener service that creates short codes for long URLs, redirects a short code to its original URL with low latency under a read-heavy load, persists the mappings durably, and records click analytics that can be queried per link, all exposed through a documented REST API.",
+  "workType": "GREENFIELD",
+  "functionalRequirements": [
+    "Create a short link from a long URL (POST), optionally with a custom alias",
+    "Redirect GET /{code} to the original URL with a 302 response",
+    "Return 404 for unknown codes, 400 for invalid URLs (http or https only, at most 2048 characters) and 409 for alias conflicts",
+    "Persist links durably so they survive a restart",
+    "Record a click event for every successful redirect without slowing the redirect down",
+    "Expose per-link analytics: total clicks, clicks per day and time of the last click"
+  ],
+  "nonFunctionalRequirements": [
+    "Read-heavy workload: assume 100 redirects for every link created",
+    "Redirect p99 latency under 50 ms when the mapping is cached",
+    "Availability target 99.9% for a single region; 99.999% would require multi-region active-active deployment and a replicated store",
+    "Analytics is best effort and asynchronous: it must never block or fail a redirect",
+    "Input validation to prevent open-redirect abuse through non-http schemes"
+  ],
+  "ambiguities": [
+    {
+      "question": "Should users be able to choose custom aliases?",
+      "impact": "Affects uniqueness handling, the API contract and abuse surface",
+      "assumedAnswer": "Yes, optional. 3 to 32 characters from A-Z, a-z, 0-9, underscore and hyphen; a conflict returns 409",
+      "blocking": false
+    },
+    {
+      "question": "Do links expire or can they be deleted?",
+      "impact": "Affects the schema, cache invalidation and analytics retention",
+      "assumedAnswer": "Not in this iteration. Expiry is a planned follow-up enhancement",
+      "blocking": false
+    },
+    {
+      "question": "How detailed must analytics be, and may visitor IP addresses be stored?",
+      "impact": "Privacy obligations and storage cost",
+      "assumedAnswer": "Counts and daily aggregates only. No IP addresses, user agents or other personal data are stored",
+      "blocking": false
+    },
+    {
+      "question": "Is authentication required to create links or read analytics?",
+      "impact": "Affects the API contract and abuse controls",
+      "assumedAnswer": "No authentication in this iteration; API-key protection and rate limiting are documented follow-ups",
+      "blocking": false
+    }
+  ],
+  "assumptions": [
+    "A single deployable service backed by one relational database",
+    "Short codes are 7 characters of base62, derived from a unique numeric id",
+    "Redirects use HTTP 302 so that clicks stay countable"
+  ],
+  "outOfScope": [
+    "User accounts and authentication",
+    "Link expiry and deletion",
+    "A web UI for end users",
+    "Multi-region deployment"
+  ]
+}

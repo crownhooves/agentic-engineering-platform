@@ -1,0 +1,242 @@
+=== FILE: src/test/java/com/example/generated/urlshortener/JdbcShortUrlRepositoryTest.java ===
+package com.example.generated.urlshortener;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+class JdbcShortUrlRepositoryTest {
+
+    @Test
+    void persistsAndReadsLinkFromH2() {
+        String url =
+                "jdbc:h2:mem:links_" + System.nanoTime()
+                        + ";DB_CLOSE_DELAY=-1";
+
+        JdbcShortUrlRepository repository =
+                new JdbcShortUrlRepository(url);
+
+        ShortUrl created =
+                repository.create(
+                        "https://example.com",
+                        "hello");
+
+        Optional<ShortUrl> found =
+                repository.findByCode(created.code());
+
+        assertTrue(found.isPresent());
+        assertEquals(
+                "https://example.com",
+                found.get().originalUrl());
+
+        assertTrue(repository.existsByAlias("hello"));
+    }
+}
+=== END FILE ===
+
+=== FILE: src/test/java/com/example/generated/urlshortener/AnalyticsServiceTest.java ===
+package com.example.generated.urlshortener;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.time.Instant;
+import org.junit.jupiter.api.Test;
+
+class AnalyticsServiceTest {
+
+    @Test
+    void recordsAndAggregatesClicks() {
+        String url =
+                "jdbc:h2:mem:analytics_" + System.nanoTime()
+                        + ";DB_CLOSE_DELAY=-1";
+
+        AnalyticsService service =
+                new AnalyticsService(url);
+
+        Instant first = Instant.parse(
+                "2026-09-30T10:00:00Z");
+
+        service.record(
+                new ClickEvent("abc1234", first));
+
+        service.record(
+                new ClickEvent(
+                        "abc1234",
+                        first.plusSeconds(60)));
+
+        AnalyticsStats stats =
+                service.stats("abc1234");
+
+        assertEquals(2, stats.totalClicks());
+        assertEquals(first.plusSeconds(60),
+                stats.lastClick());
+
+        assertEquals(
+                2L,
+                stats.clicksPerDay()
+                        .get("2026-09-30"));
+    }
+}
+=== END FILE ===
+
+=== FILE: src/test/java/com/example/generated/urlshortener/ShortenerHttpServerTest.java ===
+package com.example.generated.urlshortener;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+class ShortenerHttpServerTest {
+
+    @Test
+    void redirectReturns302AndLocation() throws Exception {
+        FakeRepository repository =
+                new FakeRepository();
+
+        RecordingClickRecorder recorder =
+                new RecordingClickRecorder();
+
+        ShortenerService service =
+                new ShortenerService(
+                        repository,
+                        recorder);
+
+        ShortUrl created =
+                service.create(
+                        "https://example.com/target",
+                        null);
+
+        AnalyticsService analytics =
+                new AnalyticsService(
+                        "jdbc:h2:mem:http_"
+                                + System.nanoTime()
+                                + ";DB_CLOSE_DELAY=-1");
+
+        ShortenerHttpServer server =
+                new ShortenerHttpServer(
+                        service,
+                        analytics);
+
+        server.start(0);
+
+        try {
+            URL url = URI.create(
+                    "http://127.0.0.1:"
+                            + server.port()
+                            + "/"
+                            + created.code()).toURL();
+
+            HttpURLConnection connection =
+                    (HttpURLConnection) url.openConnection();
+
+            connection.setInstanceFollowRedirects(false);
+
+            assertEquals(
+                    302,
+                    connection.getResponseCode());
+
+            assertEquals(
+                    "https://example.com/target",
+                    connection.getHeaderField("Location"));
+
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void unknownCodeReturns404() throws Exception {
+        ShortenerService service =
+                new ShortenerService(
+                        new FakeRepository(),
+                        event -> {});
+
+        AnalyticsService analytics =
+                new AnalyticsService(
+                        "jdbc:h2:mem:http404_"
+                                + System.nanoTime()
+                                + ";DB_CLOSE_DELAY=-1");
+
+        ShortenerHttpServer server =
+                new ShortenerHttpServer(
+                        service,
+                        analytics);
+
+        server.start(0);
+
+        try {
+            URL url = URI.create(
+                    "http://127.0.0.1:"
+                            + server.port()
+                            + "/missing").toURL();
+
+            HttpURLConnection connection =
+                    (HttpURLConnection) url.openConnection();
+
+            assertEquals(
+                    404,
+                    connection.getResponseCode());
+
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static final class FakeRepository
+            implements ShortUrlRepository {
+
+        private long id = 1;
+        private ShortUrl stored;
+
+        @Override
+        public ShortUrl create(
+                String url,
+                String alias) {
+
+            stored = new ShortUrl(
+                    id,
+                    Base62.encode(id),
+                    url,
+                    alias,
+                    java.time.Instant.now());
+
+            id++;
+            return stored;
+        }
+
+        @Override
+        public Optional<ShortUrl> findByCode(
+                String code) {
+
+            return stored != null
+                    && stored.code().equals(code)
+                    ? Optional.of(stored)
+                    : Optional.empty();
+        }
+
+        @Override
+        public boolean existsByAlias(
+                String alias) {
+
+            return stored != null
+                    && alias.equals(stored.alias());
+        }
+    }
+
+    private static final class RecordingClickRecorder
+            implements ClickRecorder {
+
+        int count;
+
+        @Override
+        public void record(ClickEvent event) {
+            count++;
+        }
+    }
+}
+=== END FILE ===

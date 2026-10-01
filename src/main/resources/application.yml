@@ -1,0 +1,45 @@
+server:
+  port: 8088
+spring:
+  application:
+    name: agentic-sdlc
+  profiles:
+    active: mock            # override: --spring.profiles.active=ollama
+  datasource:
+    url: jdbc:h2:file:./data/agentdb
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true         # http://localhost:8080/h2-console
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+agentic:
+  orchestrator:
+    max-parallel-tasks: 4
+    max-attempts: 3
+    initial-backoff: 500ms
+    max-backoff: 10s
+    step-timeout: 180s
+  llm:
+    call-timeout: 120s
+    max-output-repairs: 2
+  budget:
+    max-tokens-per-run: 500000
+    max-llm-calls-per-run: 100
+  workspace:
+    root: ./workspaces
+    reference-root: ./reference/sample
+    brownfield-root: ./reference/sample
+    command-timeout: 180s
+    max-output-chars: 50000
+    max-files: 2000

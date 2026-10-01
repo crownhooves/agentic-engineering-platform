@@ -1,0 +1,117 @@
+=== FILE: src/main/java/com/example/generated/urlshortener/ShortenerService.java ===
+package com.example.generated.urlshortener;
+
+import java.net.URI;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class ShortenerService {
+    private static final int MAX_URL_LENGTH = 2048;
+    private static final int MIN_ALIAS_LENGTH = 3;
+    private static final int MAX_ALIAS_LENGTH = 32;
+
+    private final ShortUrlRepository repository;
+    private final ClickRecorder clickRecorder;
+    private final Map<String, ShortUrl> cache = new ConcurrentHashMap<>();
+
+    public ShortenerService(ShortUrlRepository repository, ClickRecorder clickRecorder) {
+        this.repository = repository;
+        this.clickRecorder = clickRecorder;
+    }
+
+    public ShortUrl create(String url, String alias) {
+        validateUrl(url);
+        validateAlias(alias);
+
+        if (alias != null && repository.existsByAlias(alias)) {
+            throw new AliasConflictException("Alias already exists: " + alias);
+        }
+
+        ShortUrl created = repository.create(url, alias);
+        cache.put(created.code(), created);
+        if (alias != null) {
+            cache.put(alias, created);
+        }
+        return created;
+    }
+
+    public Optional<ShortUrl> resolve(String code) {
+        Optional<ShortUrl> found = resolveWithoutRecording(code);
+        found.ifPresent(url -> recordClick(url.code()));
+        return found;
+    }
+
+    public Optional<ShortUrl> resolveWithoutRecording(String code) {
+        if (code == null || code.isBlank()) {
+            return Optional.empty();
+        }
+
+        ShortUrl cached = cache.get(code);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+
+        Optional<ShortUrl> found = repository.findByCode(code);
+        found.ifPresent(url -> {
+            cache.put(url.code(), url);
+            if (url.alias() != null) {
+                cache.put(url.alias(), url);
+            }
+        });
+
+        return found;
+    }
+
+    private void recordClick(String code) {
+        try {
+            clickRecorder.record(new ClickEvent(code, Instant.now()));
+        } catch (RuntimeException ignored) {
+            // Analytics must never make a redirect fail.
+        }
+    }
+
+    static void validateUrl(String url) {
+        if (url == null || url.length() > MAX_URL_LENGTH) {
+            throw new InvalidUrlException("URL must be between 1 and 2048 characters");
+        }
+
+        try {
+            URI uri = URI.create(url);
+            String scheme = uri.getScheme();
+            if (scheme == null ||
+                    (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) ||
+                    uri.getHost() == null) {
+                throw new InvalidUrlException("Only valid http and https URLs are accepted");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new InvalidUrlException("Invalid URL");
+        }
+    }
+
+    static void validateAlias(String alias) {
+        if (alias == null) {
+            return;
+        }
+
+        if (alias.length() < MIN_ALIAS_LENGTH || alias.length() > MAX_ALIAS_LENGTH
+                || !alias.matches("[A-Za-z0-9_-]+")) {
+            throw new InvalidAliasException(
+                    "Alias must be 3 to 32 characters using letters, digits, underscore or hyphen");
+        }
+    }
+
+    public static final class InvalidUrlException extends IllegalArgumentException {
+        public InvalidUrlException(String message) { super(message); }
+    }
+
+    public static final class InvalidAliasException extends IllegalArgumentException {
+        public InvalidAliasException(String message) { super(message); }
+    }
+
+    public static final class AliasConflictException extends IllegalStateException {
+        public AliasConflictException(String message) { super(message); }
+    }
+}
+=== END FILE ===

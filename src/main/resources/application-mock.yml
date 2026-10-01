@@ -1,0 +1,10 @@
+agentic:
+  llm:
+    mock-latency: 150ms
+  workspace:
+    root: ./workspaces
+    reference-root: ./reference/sample
+    brownfield-root: ./reference/sample
+    command-timeout: 180s
+    max-output-chars: 50000
+    max-files: 2000

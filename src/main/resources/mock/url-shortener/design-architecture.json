@@ -1,0 +1,89 @@
+{
+  "overview": "A single Java 17 service implements URL creation, redirect lookup and asynchronous click analytics. H2 provides durable relational persistence. Redirects use a cache-aside map for hot mappings and invoke a ClickRecorder contract without waiting for analytics persistence. The API contract is represented by lightweight HTTP handlers because the reference project intentionally contains no web framework.",
+  "components": [
+    {
+      "name": "ShortenerService",
+      "responsibility": "Validate URLs and aliases, allocate IDs, generate base62 short codes, persist mappings and resolve redirects.",
+      "contract": "create(longUrl, alias) returns a ShortUrl; resolve(code) returns the stored mapping or empty."
+    },
+    {
+      "name": "JdbcShortUrlRepository",
+      "responsibility": "Persist URL mappings in H2 using JDBC and enforce unique short codes and aliases.",
+      "contract": "create, findByCode and existsByAlias operations backed by a relational table."
+    },
+    {
+      "name": "Cache",
+      "responsibility": "Keep frequently accessed URL mappings in memory to reduce database reads on redirects.",
+      "contract": "get, put and invalidate by short code."
+    },
+    {
+      "name": "ClickRecorder",
+      "responsibility": "Accept successful redirect events without coupling redirect latency to analytics persistence.",
+      "contract": "record(ClickEvent) must return immediately and must not propagate analytics failures to the redirect path."
+    },
+    {
+      "name": "AsyncClickRecorder",
+      "responsibility": "Implement ClickRecorder with a bounded queue and background JDBC writes.",
+      "contract": "Successful redirect events are queued; full queues drop events and increment a drop counter."
+    },
+    {
+      "name": "AnalyticsService",
+      "responsibility": "Query total clicks, daily click counts and the latest click time for a link.",
+      "contract": "stats(code) returns aggregated analytics from persisted click events."
+    },
+    {
+      "name": "ShortenerHttpServer",
+      "responsibility": "Expose REST-like HTTP endpoints using the JDK HttpServer API.",
+      "contract": "POST /api/links creates links, GET /{code} redirects, and GET /api/links/{code}/stats returns analytics."
+    }
+  ],
+  "dataModel": [
+    {
+      "name": "short_url",
+      "fields": [
+        "id BIGINT identity primary key",
+        "code VARCHAR(7) unique not null",
+        "original_url VARCHAR(2048) not null",
+        "alias VARCHAR(32) unique nullable",
+        "created_at TIMESTAMP not null"
+      ]
+    },
+    {
+      "name": "click_event",
+      "fields": [
+        "id BIGINT identity primary key",
+        "code VARCHAR(7) not null",
+        "clicked_at TIMESTAMP not null"
+      ]
+    }
+  ],
+  "openApiYaml": "openapi: 3.0.3\ninfo:\n  title: URL Shortener API\n  version: 1.0.0\npaths:\n  /api/links:\n    post:\n      summary: Create a short link\n      requestBody:\n        required: true\n      responses:\n        '201':\n          description: Created\n        '400':\n          description: Invalid URL or alias\n        '409':\n          description: Alias conflict\n  /{code}:\n    get:\n      summary: Redirect to the original URL\n      responses:\n        '302':\n          description: Redirect\n        '404':\n          description: Unknown code\n  /api/links/{code}/stats:\n    get:\n      summary: Get click analytics\n      responses:\n        '200':\n          description: Analytics\n        '404':\n          description: Unknown code",
+  "decisions": [
+    {
+      "decision": "Use H2 through JDBC",
+      "rationale": "The reference project provides H2 and no application framework, so JDBC keeps the generated system dependency-free.",
+      "tradeoffs": "A production deployment would normally use a managed relational database with connection pooling and operational backups."
+    },
+    {
+      "decision": "Use cache-aside redirect lookup",
+      "rationale": "The workload is explicitly read-heavy and cached mappings can avoid database reads.",
+      "tradeoffs": "An in-memory cache is local to one process and requires invalidation if deletion is added later."
+    },
+    {
+      "decision": "Make analytics asynchronous",
+      "rationale": "Redirect latency must not depend on analytics persistence.",
+      "tradeoffs": "Events can be dropped when the bounded queue is full, so analytics is explicitly best effort."
+    },
+    {
+      "decision": "Generate seven-character base62 codes from database IDs",
+      "rationale": "A database-generated unique numeric ID provides a deterministic source for collision-free generated codes.",
+      "tradeoffs": "Sequential IDs make the code space enumerable; production deployments may need an opaque identifier strategy."
+    }
+  ],
+  "scalabilityNotes": [
+    "The expected read-heavy workload is handled by a local cache for hot redirects.",
+    "A single H2-backed process is suitable for the reference implementation but is not a production 99.999% multi-region architecture.",
+    "Analytics writes are decoupled from redirects through a bounded asynchronous queue.",
+    "The architecture can evolve to a distributed cache and replicated relational store without changing the ClickRecorder contract."
+  ]
+}

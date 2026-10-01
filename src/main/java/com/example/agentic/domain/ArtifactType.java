@@ -1,0 +1,18 @@
+package com.example.agentic.domain;
+
+public enum ArtifactType {
+    REQUIREMENT_ANALYSIS,
+    CLARIFICATION_ANSWERS,
+    PLAN,
+    IMPACT_ANALYSIS,
+    ARCHITECTURE,
+    OPENAPI,
+    SOURCE_CODE,
+    TEST_CODE,
+    VALIDATION_REPORT,
+    RUNTIME_VERIFICATION,
+    RISK_REGISTER,
+    DOCUMENTATION,
+    SUMMARY,
+    EXECUTABLE,
+}

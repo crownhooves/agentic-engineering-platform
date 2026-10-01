@@ -1,0 +1,72 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A single relational database is a single-region availability and durability boundary.",
+      "likelihood": "MEDIUM",
+      "impact": "HIGH",
+      "mitigation": "Use managed storage, backups and replication in production; multi-region active-active is required for a 99.999% target."
+    },
+    {
+      "id": "R2",
+      "description": "An in-memory cache is local to one process and can become cold after restart.",
+      "likelihood": "MEDIUM",
+      "impact": "MEDIUM",
+      "mitigation": "Use cache-aside semantics and retain the database as the source of truth."
+    },
+    {
+      "id": "R3",
+      "description": "The bounded analytics queue can drop click events under sustained overload.",
+      "likelihood": "MEDIUM",
+      "impact": "MEDIUM",
+      "mitigation": "Expose dropped-event metrics and move to durable messaging when analytics completeness becomes mandatory."
+    },
+    {
+      "id": "R4",
+      "description": "Generated short codes based on sequential IDs are enumerable.",
+      "likelihood": "HIGH",
+      "impact": "MEDIUM",
+      "mitigation": "Use opaque random identifiers or an encoding strategy that does not expose database sequencing in production."
+    },
+    {
+      "id": "R5",
+      "description": "Unauthenticated link creation can enable spam and abuse.",
+      "likelihood": "HIGH",
+      "impact": "HIGH",
+      "mitigation": "Add authentication, API keys, rate limiting and abuse controls before internet-scale deployment."
+    }
+  ],
+  "failureScenarios": [
+    {
+      "scenario": "Database unavailable",
+      "detection": "Database connection errors and failed health checks",
+      "mitigation": "Fail creation explicitly, preserve redirect cache hits where possible, and restore database availability."
+    },
+    {
+      "scenario": "Analytics queue saturation",
+      "detection": "Dropped-event counter and queue-depth metric",
+      "mitigation": "Drop analytics events without failing redirects and scale or replace the queue when required."
+    },
+    {
+      "scenario": "Invalid redirect target",
+      "detection": "URL validation failure during link creation",
+      "mitigation": "Accept only URLs with http or https schemes and a valid host."
+    },
+    {
+      "scenario": "Cache cold start",
+      "detection": "Increased database lookup rate and redirect latency",
+      "mitigation": "Use cache-aside loading from the durable store."
+    }
+  ],
+  "validationStrategy": [
+    "Unit tests cover Base62 encoding, URL validation, alias validation, duplicate aliases and click recording.",
+    "Integration tests cover H2 persistence, analytics aggregation and HTTP redirect behavior.",
+    "Run the complete Maven build and test suite through the controlled validation runner.",
+    "Perform a load or failure-injection check against the redirect and analytics paths before production deployment."
+  ],
+  "tradeoffs": [
+    "H2 and JDBC keep the reference implementation dependency-light but are not a production HA database deployment.",
+    "Best-effort asynchronous analytics protects redirect latency at the cost of possible event loss.",
+    "A local cache improves hot-read latency but does not provide distributed cache consistency."
+  ]
+}
